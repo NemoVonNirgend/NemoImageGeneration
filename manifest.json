@@ -1,0 +1,9 @@
+{
+  "display_name": "Nemo Image Generation",
+  "author": "@NemoVonNirgend",
+  "version": "1.0.0",
+  "description": "Automatic Pollinations image detection and generation workflows.",
+  "js": "index.js",
+  "homePage": "https://github.com/NemoVonNirgend/NemoImageGeneration",
+  "loading_order": 1011
+}
