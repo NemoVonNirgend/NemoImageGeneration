@@ -90,8 +90,15 @@ function positivePromptDoc(dialect) {
     return 'A vivid natural-language description in 2-4 sentences. Lead with each person\'s complete physical appearance and current action, followed by expression, camera framing, setting, and lighting. Do not use tag syntax.';
 }
 
+function generationMode() {
+    const mode = getSettings().inlineImageMode;
+    return ['important', 'every', 'nth'].includes(mode) ? mode : 'important';
+}
+
 export function buildInlineImageInstruction() {
     const dialect = currentDialect();
+    const mode = generationMode();
+    const mandatory = mode === 'every' || mode === 'nth';
     const knownRefs = [...characterRefs.values()]
         .filter(ref => ref.description)
         .map(ref => `- ${ref.name}: ${ref.description}`)
@@ -99,7 +106,9 @@ export function buildInlineImageInstruction() {
 
     return [
         '[Nemo Image Generation inline-image directive]',
-        'Write your normal roleplay response first. If it contains a concrete visual moment worth illustrating, append exactly one hidden metadata block at the very end. Depict the scene as it stands at the END of the response.',
+        mandatory
+            ? 'Write your normal roleplay response first. For EVERY normal assistant reply, you MUST append exactly one hidden metadata block at the very end; do not decide whether the moment is important enough. Depict the scene as it stands at the END of the response.'
+            : 'Write your normal roleplay response first. Decide whether it contains a concrete visual moment important enough to illustrate. When it does, append exactly one hidden metadata block at the very end. Depict the scene as it stands at the END of the response.',
         `<${TAG}>`,
         '{',
         `  "positive_prompt": "${positivePromptDoc(dialect)}",`,
@@ -119,6 +128,9 @@ export function buildInlineImageInstruction() {
         '}',
         `</${TAG}>`,
         'The block is machine-readable metadata, not story prose. The image model knows nothing about the story: positive_prompt must describe every visible subject physically rather than relying on names or pronouns. Reuse established identities verbatim. Illustrate only adults. Omit the block for non-visual OOC or administrative replies.',
+        mandatory
+            ? 'For normal roleplay replies the block is mandatory. Only omit it for purely OOC, system, or administrative replies.'
+            : 'If no visual moment is important enough, omit the block.',
         knownRefs ? `ESTABLISHED CHARACTER APPEARANCES:\n${knownRefs}` : '',
     ].filter(Boolean).join('\n');
 }
@@ -126,7 +138,8 @@ export function buildInlineImageInstruction() {
 export function refreshInlineImagePrompt() {
     // The NemoTavern fork uses its own prompt under a different setting. Let it
     // remain the single writer while this extension consumes the resulting spec.
-    const forkOwnsInjection = power_user.image_prompt_mode === 'inline';
+    // Mandatory extension modes must still strengthen the fork's optional wording.
+    const forkOwnsInjection = power_user.image_prompt_mode === 'inline' && generationMode() === 'important';
     setExtensionPrompt(
         PROMPT_KEY,
         isInjectionActive() && !forkOwnsInjection ? buildInlineImageInstruction() : '',

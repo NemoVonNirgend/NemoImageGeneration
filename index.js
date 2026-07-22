@@ -1,5 +1,6 @@
 import { saveSettings, saveSettingsDebounced } from '../../../../script.js';
 import { extension_settings } from '../../../extensions.js';
+import { power_user } from '../../../power-user.js';
 import {
     DEFAULT_POLLINATIONS_NEGATIVE_BEST_PRACTICES,
     DEFAULT_POLLINATIONS_PROMPT_BEST_PRACTICES,
@@ -25,6 +26,7 @@ const DEFAULTS = Object.freeze({
     enabled: true,
     inlinePromptEnabled: true,
     autoInlineEnabled: true,
+    inlineImageMode: 'important',
     inlineImageFrequency: 1,
     inlinePromptStyle: 'auto',
     pollinationsCaptureEnabled: true,
@@ -41,6 +43,7 @@ function getSettings() {
             enabled: legacy.nemoEnablePollinationsInterceptor ?? DEFAULTS.enabled,
             inlinePromptEnabled: DEFAULTS.inlinePromptEnabled,
             autoInlineEnabled: DEFAULTS.autoInlineEnabled,
+            inlineImageMode: DEFAULTS.inlineImageMode,
             inlineImageFrequency: DEFAULTS.inlineImageFrequency,
             inlinePromptStyle: DEFAULTS.inlinePromptStyle,
             pollinationsCaptureEnabled: legacy.nemoEnablePollinationsInterceptor ?? DEFAULTS.pollinationsCaptureEnabled,
@@ -53,6 +56,16 @@ function getSettings() {
     }
     const settings = extension_settings.NemoImageGeneration;
     let migrated = false;
+    if (settings.inlineImageMode === undefined || settings.inlineImageMode === null) {
+        const forkSceneImages = power_user.scene_images;
+        if (forkSceneImages?.enabled) {
+            settings.inlineImageFrequency = Math.max(1, Number(forkSceneImages.frequency) || 3);
+            settings.inlineImageMode = settings.inlineImageFrequency > 1 ? 'nth' : 'every';
+        } else {
+            settings.inlineImageMode = Number(settings.inlineImageFrequency) > 1 ? 'nth' : DEFAULTS.inlineImageMode;
+        }
+        migrated = true;
+    }
     for (const [key, value] of Object.entries(DEFAULTS)) {
         if (settings[key] !== undefined && settings[key] !== null) continue;
         settings[key] = value;
@@ -67,6 +80,14 @@ function syncFeatures() {
     if (settings.enabled && (settings.inlinePromptEnabled || settings.autoInlineEnabled)) initInlineImagePrompts(getSettings);
     else destroyInlineImagePrompts();
 
+    // The NemoTavern fork's Scene Images listener clicks the same paintbrush.
+    // Transfer ownership once so the two independent queues cannot double-generate.
+    if (settings.enabled && settings.autoInlineEnabled && power_user.scene_images?.enabled) {
+        power_user.scene_images.enabled = false;
+        const legacyToggle = document.querySelector('#sceneImagesCard input[type="checkbox"]');
+        if (legacyToggle) legacyToggle.checked = false;
+        saveSettingsDebounced();
+    }
     if (settings.enabled && settings.autoInlineEnabled) initAutomaticInlineGeneration(getSettings);
     else destroyAutomaticInlineGeneration();
 
@@ -92,10 +113,16 @@ function mountSettings(settings) {
                 <h4>Automatic inline images</h4>
                 <label class="checkbox_label"><input type="checkbox" data-setting="inlinePromptEnabled" ${settings.inlinePromptEnabled ? 'checked' : ''}><span>Ask the narrator for hidden inline image prompts</span></label>
                 <label class="checkbox_label"><input type="checkbox" data-setting="autoInlineEnabled" ${settings.autoInlineEnabled ? 'checked' : ''}><span>Generate and attach inline images automatically</span></label>
-                <label for="nemo-inline-frequency">Generation frequency</label>
-                <select id="nemo-inline-frequency" class="text_pole" data-setting="inlineImageFrequency">
-                    ${[[1, 'Every eligible message'], [3, 'Every 3rd eligible message'], [5, 'Every 5th eligible message']].map(([value, label]) => `<option value="${value}" ${Number(settings.inlineImageFrequency) === value ? 'selected' : ''}>${label}</option>`).join('')}
+                <label for="nemo-inline-mode">When to generate</label>
+                <select id="nemo-inline-mode" class="text_pole" data-setting="inlineImageMode">
+                    ${[['important', 'Decide when it is important'], ['every', 'Every message'], ['nth', 'Every Nth message']].map(([value, label]) => `<option value="${value}" ${settings.inlineImageMode === value ? 'selected' : ''}>${label}</option>`).join('')}
                 </select>
+                <div data-nemo-nth-frequency ${settings.inlineImageMode === 'nth' ? '' : 'hidden'}>
+                    <label for="nemo-inline-frequency">Nth-message interval</label>
+                    <select id="nemo-inline-frequency" class="text_pole" data-setting="inlineImageFrequency">
+                        ${[[2, 'Every 2nd message'], [3, 'Every 3rd message'], [5, 'Every 5th message'], [10, 'Every 10th message']].map(([value, label]) => `<option value="${value}" ${Number(settings.inlineImageFrequency) === value ? 'selected' : ''}>${label}</option>`).join('')}
+                    </select>
+                </div>
                 <label for="nemo-inline-style">Prompt dialect</label>
                 <select id="nemo-inline-style" class="text_pole" data-setting="inlinePromptStyle">
                     ${[['auto', 'Automatic from configured provider'], ['natural', 'Natural language'], ['booru', 'Danbooru / anime SDXL'], ['mixed', 'Mixed tags + prose'], ['anima', 'Anima mixed tags + prose'], ['nai', 'NovelAI tags']].map(([value, label]) => `<option value="${value}" ${settings.inlinePromptStyle === value ? 'selected' : ''}>${label}</option>`).join('')}
@@ -121,8 +148,16 @@ function mountSettings(settings) {
         settings[input.dataset.setting] = input.type === 'checkbox'
             ? input.checked
             : (input.dataset.setting === 'inlineImageFrequency' ? Number(input.value) : input.value);
+        if (input.dataset.setting === 'inlineImageMode' && settings.inlineImageMode === 'nth' && Number(settings.inlineImageFrequency) < 2) {
+            settings.inlineImageFrequency = 3;
+            host.querySelector('[data-setting="inlineImageFrequency"]').value = '3';
+        }
         saveSettingsDebounced();
         void saveSettings();
+        host.querySelector('[data-nemo-nth-frequency]').hidden = settings.inlineImageMode !== 'nth';
+        if (['inlineImageMode', 'inlineImageFrequency'].includes(input.dataset.setting)) {
+            destroyAutomaticInlineGeneration();
+        }
         syncFeatures();
     });
     container.appendChild(host);

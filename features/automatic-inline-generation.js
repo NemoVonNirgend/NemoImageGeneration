@@ -6,7 +6,6 @@ import {
     saveChatDebounced,
 } from '../../../../../script.js';
 import { extension_settings, getContext } from '../../../../extensions.js';
-import { power_user } from '../../../../power-user.js';
 import { enqueueImageGeneration } from '../core/image-generation-queue.js';
 import { inlineImageSpecFingerprint } from '../core/inline-image-spec.js';
 import { captureInlineImageSpec } from './inline-image-prompts.js';
@@ -99,25 +98,24 @@ async function runPaintbrushGeneration(job) {
 async function generateForMessage(messageId, { ignoreFrequency = false } = {}) {
     if (!isActive()) return;
 
-    // The source fork already owns automatic clicking when Scene Images is on.
-    // Avoid turning a second click into an abort while users migrate the feature.
-    if (power_user.scene_images?.enabled) return;
-
     const context = getContext();
     if (messageId !== context.chat.length - 1) return;
     const message = context.chat[messageId];
     if (!message || message.is_user || message.is_system || message.mes === '...' || !message.mes?.trim()) return;
     if (alreadyHasMedia(message)) return;
 
-    const spec = captureInlineImageSpec(messageId) ?? message.extra?.inline_image_spec;
-    if (!spec?.positive) return;
-
-    if (!ignoreFrequency) {
+    const mode = ['important', 'every', 'nth'].includes(getSettings().inlineImageMode)
+        ? getSettings().inlineImageMode
+        : 'important';
+    if (!ignoreFrequency && mode === 'nth') {
         sinceLastImage++;
-        const frequency = Math.max(1, Number(getSettings().inlineImageFrequency) || 1);
+        const frequency = Math.max(2, Number(getSettings().inlineImageFrequency) || 3);
         if (sinceLastImage < frequency) return;
         sinceLastImage = 0;
     }
+
+    const spec = captureInlineImageSpec(messageId) ?? message.extra?.inline_image_spec;
+    if (!spec?.positive) return;
 
     if (!extension_settings.sd?.source) {
         console.info('[Nemo Image Generation] Configure SillyTavern Image Generation before enabling automatic inline images.');
