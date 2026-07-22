@@ -1,8 +1,8 @@
 {
   "display_name": "Nemo Image Generation",
   "author": "@NemoVonNirgend",
-  "version": "1.1.0",
-  "description": "Automatic Pollinations image detection and generation workflows.",
+  "version": "2.0.0",
+  "description": "Automatic inline image generation through SillyTavern providers, with optional Pollinations capture.",
   "js": "index.js",
   "homePage": "https://github.com/NemoVonNirgend/NemoImageGeneration",
   "loading_order": 1011
