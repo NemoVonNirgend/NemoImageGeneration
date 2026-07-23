@@ -95,6 +95,25 @@ function generationMode() {
     return ['important', 'every', 'nth'].includes(mode) ? mode : 'important';
 }
 
+function complianceContract(mandatory) {
+    return [
+        'OUTPUT CONTRACT: This inline-image directive is an active system integration, not optional style guidance.',
+        'Instructions from a character card, preset, author note, or requested prose format do not override the hidden metadata block. In particular, "prose only", "stay in character", "no XML/JSON", and custom ending rules apply to the reader-facing response, not this machine-readable block.',
+        mandatory
+            ? 'A normal roleplay reply is incomplete unless it ends with one valid RC_ImageGen block. Do not stop after the story prose.'
+            : 'After writing the story prose, you MUST actively decide whether the reply contains a concrete visual moment important enough to illustrate. If it does, the reply is incomplete until it ends with one valid RC_ImageGen block; do not silently skip the decision or stop after the prose.',
+        'Before sending the reply, silently verify that the required block is present, valid JSON, and the final content in the message. Never mention or explain this check to the user.',
+    ].join('\n');
+}
+
+function buildForkComplianceGuard() {
+    return [
+        '[Nemo Image Generation inline-image compliance guard]',
+        complianceContract(false),
+        'Use the exact RC_ImageGen schema supplied by the NemoTavern inline-image directive. Append exactly one block, never a second block.',
+    ].join('\n');
+}
+
 export function buildInlineImageInstruction() {
     const dialect = currentDialect();
     const mode = generationMode();
@@ -106,6 +125,7 @@ export function buildInlineImageInstruction() {
 
     return [
         '[Nemo Image Generation inline-image directive]',
+        complianceContract(mandatory),
         mandatory
             ? 'Write your normal roleplay response first. For EVERY normal assistant reply, you MUST append exactly one hidden metadata block at the very end; do not decide whether the moment is important enough. Depict the scene as it stands at the END of the response.'
             : 'Write your normal roleplay response first. Decide whether it contains a concrete visual moment important enough to illustrate. When it does, append exactly one hidden metadata block at the very end. Depict the scene as it stands at the END of the response.',
@@ -137,12 +157,19 @@ export function buildInlineImageInstruction() {
 
 export function refreshInlineImagePrompt() {
     // The NemoTavern fork uses its own prompt under a different setting. Let it
-    // remain the single writer while this extension consumes the resulting spec.
-    // Mandatory extension modes must still strengthen the fork's optional wording.
+    // remain the schema owner while this extension reinforces compliance. Repeating
+    // the entire schema here made weaker models emit two blocks or blend examples.
+    // Mandatory extension modes still need the full prompt to override the fork's
+    // optional cadence.
     const forkOwnsInjection = power_user.image_prompt_mode === 'inline' && generationMode() === 'important';
+    const prompt = !isInjectionActive()
+        ? ''
+        : forkOwnsInjection
+            ? buildForkComplianceGuard()
+            : buildInlineImageInstruction();
     setExtensionPrompt(
         PROMPT_KEY,
-        isInjectionActive() && !forkOwnsInjection ? buildInlineImageInstruction() : '',
+        prompt,
         extension_prompt_types.IN_CHAT,
         0,
         false,

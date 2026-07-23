@@ -19,6 +19,14 @@ test('mandatory modes require metadata while important mode retains narrator dis
     assert.match(prompts, /Decide whether it contains a concrete visual moment important enough to illustrate/);
 });
 
+test('prompt contract resists preset formatting conflicts and requires a final compliance check', () => {
+    assert.match(prompts, /active system integration, not optional style guidance/);
+    assert.match(prompts, /character card, preset, author note, or requested prose format do not override/);
+    assert.match(prompts, /"prose only", "stay in character", "no XML\/JSON"/);
+    assert.match(prompts, /reply is incomplete/);
+    assert.match(prompts, /silently verify that the required block is present, valid JSON, and the final content/);
+});
+
 test('numeric cadence applies only to Nth-message mode', () => {
     assert.match(automatic, /!ignoreFrequency && mode === 'nth'/);
     assert.match(automatic, /Math\.max\(2, Number\(getSettings\(\)\.inlineImageFrequency\) \|\| 3\)/);
